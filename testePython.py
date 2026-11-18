@@ -23,23 +23,42 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk
 
-# =====================================================================
-#  DEFINIÇÃO DO AUTÔMATO
-# =====================================================================
+# ==============================================================================
+#  1. ÁREA DE CONFIGURAÇÃO RÁPIDA
+# ==============================================================================
+
+# Descrição que aparece no painel superior direito
+TEXTO_LINGUAGEM = (
+    "L(G) = { x | x ∈ (0,1)+ e se x começa com 0 então o nº de 0's é par,\n"
+    "                              senão o nº de 0's é ímpar }\n"
+)
+
+# Símbolos aceitos no teclado e colunas da tabela (ex: ["0", "1"] ou ["a", "b", "c"])
 ALFABETO = ["0", "1"]
+
+# Lista de todos os estados do autômato
 ESTADOS = ["S", "A", "B", "C", "D"]
+
+# Estado inicial (deve estar em ESTADOS)
 INICIAL = "S"
+
+# Conjunto de estados de aceitação/finais
 FINAIS = {"B", "D"}
 
-# Função de transição δ : K x Σ -> K   (tabela TOTAL, não existe estado indefinido)
-DELTA = {
-    ("S", "0"): "A", ("S", "1"): "C",
-    ("A", "0"): "B", ("A", "1"): "A",
-    ("B", "0"): "A", ("B", "1"): "B",
-    ("C", "0"): "D", ("C", "1"): "C",
-    ("D", "0"): "C", ("D", "1"): "D",
+# Tabela de Transição δ:
+# Para cada estado, informe a lista de estados de destino seguindo a MESMA ORDEM do ALFABETO.
+# Dica: Se não houver transição para um símbolo (AFD incompleto), use None ou "-".
+# Exemplo abaixo para ALFABETO = ["0", "1"]: [destino_com_0, destino_com_1]
+TABELA_TRANSICAO = {
+    #        "0"   "1"
+    "S": [   "A",  "C" ],
+    "A": [   "B",  "A" ],
+    "B": [   "A",  "B" ],
+    "C": [   "D",  "C" ],
+    "D": [   "C",  "D" ],
 }
 
+# Explicação de cada estado (Opcional: se criar um estado novo ao vivo, não precisa preencher)
 SIGNIFICADO = {
     "S": "nada lido ainda",
     "A": "começou com 0  |  nº de 0's ÍMPAR",
@@ -48,69 +67,119 @@ SIGNIFICADO = {
     "D": "começou com 1  |  nº de 0's ÍMPAR",
 }
 
-TEXTO_LINGUAGEM = (
-    "L(G) = { x | x ∈ (0,1)+ e se x começa com 0 então o nº de 0's é par,\n"
-    "                              senão o nº de 0's é ímpar }\n"
-)
+# Teclas de controle da interface
+TECLAS_AVALIAR = ("space", "Return", "KP_Enter")
+TECLA_APAGAR   = "BackSpace"
+TECLA_LIMPAR   = "Escape"
 
-# Posição dos estados no diagrama
-POS = {
+# Layout do Grafo (Opcional: estados sem coordenada aqui são posicionados automaticamente)
+POSICOES_FIXAS = {
     "S": (95, 215),
     "A": (310, 105), "B": (530, 105),
     "C": (310, 325), "D": (530, 325),
 }
-LOOP_PARA_CIMA = {"A", "B"}   # os demais têm o laço desenhado embaixo
-R = 30                          # raio dos estados
+LOOP_PARA_CIMA = {"A", "B"}   # Estados cujo auto-laço (loop) desenha para cima
+RAIO_NO = 30                  # Raio do círculo de cada estado
 
-# =====================================================================
-#  LÓGICA DO AUTÔMATO  (máquina de estados pura, sem interface)
-# =====================================================================
+
+# ==============================================================================
+#  2. PRÉ-PROCESSAMENTO E MOTOR DO AUTÔMATO (LÓGICA PURA)
+# ==============================================================================
+
+def construir_delta():
+    """Converte a TABELA_TRANSICAO amigável no dicionário DELTA (estado, simbolo) -> destino."""
+    delta = {}
+    for estado, destinos in TABELA_TRANSICAO.items():
+        for simbolo, destino in zip(ALFABETO, destinos):
+            if destino not in (None, "", "-"):
+                delta[(estado, simbolo)] = destino
+    return delta
+
+DELTA = construir_delta()
+
+
+def obter_significado(estado):
+    """Retorna a descrição do estado sem quebrar caso um estado novo não tenha descrição."""
+    if estado == "REJEIÇÃO (Travou)":
+        return "Transição indefinida — o autômato travou"
+    return SIGNIFICADO.get(estado, f"Estado {estado}")
+
+
+def calcular_posicoes():
+    """Garante que todo estado tenha uma posição (x, y) na tela, mesmo se adicionado ao vivo."""
+    pos = {}
+    nao_definidos = [e for e in ESTADOS if e not in POSICOES_FIXAS]
+    
+    if not nao_definidos:
+        return POSICOES_FIXAS.copy()
+    
+    cx, cy, rx, ry = 330, 215, 220, 135
+    total = max(1, len(ESTADOS))
+    for i, e in enumerate(ESTADOS):
+        ang = math.pi + (2 * math.pi * i) / total
+        pos[e] = (cx + rx * math.cos(ang), cy + ry * math.sin(ang))
+    return pos
+
+POS = calcular_posicoes()
+
+
 def simular(palavra):
-    """Executa o AFD símbolo a símbolo.
-    Retorna (lista de passos, estado final alcançado).
-    Cada passo = (nº, símbolo lido, estado anterior, novo estado)."""
     estado = INICIAL
     passos = []
+    travou = False
+
     for i, simbolo in enumerate(palavra, 1):
-        novo = DELTA[(estado, simbolo)]          # δ(estado, símbolo)
+        novo = DELTA.get((estado, simbolo))
+        if novo is None:
+            passos.append((i, simbolo, estado, "—"))
+            estado = "REJEIÇÃO (Travou)"
+            travou = True
+            break
         passos.append((i, simbolo, estado, novo))
         estado = novo
-    return passos, estado
+
+    return passos, estado, travou
 
 
-def aceita(estado):
+def aceita(palavra, estado, travou):
+    if not palavra or travou:
+        return False
     return estado in FINAIS
 
 
 def gerar_gramatica():
-    """Gramática Regular obtida do AFD (padrão visto em aula):
-       δ(X,a) = Y     -> X ::= aY
-       X ∈ F (final)  -> X ::= ε   (o estado final é identificado pelo ε)"""
     linhas = []
     for e in ESTADOS:
-        alternativas = [f"{a}{DELTA[(e, a)]}" for a in ALFABETO]
+        alternativas = [
+            f"{a}{DELTA[(e, a)]}"
+            for a in ALFABETO
+            if (e, a) in DELTA
+        ]
         if e in FINAIS:
             alternativas.append("ε")
-        linhas.append(f"{e} ::= " + " | ".join(alternativas))
+        if alternativas:
+            linhas.append(f"{e} ::= " + " | ".join(alternativas))
     return "\n".join(linhas)
 
 
-# =====================================================================
-#  INTERFACE
-# =====================================================================
-BG = "#1e1e2e"
-PAINEL = "#27273a"
-BORDA = "#3b3b55"
-TXT = "#e6e6f0"
-TXT2 = "#9a9ab5"
-NO = "#313244"
-NO_VISIT = "#44476a"
-ATUAL = "#f9e2af"
-LINHA = "#6c7086"
-CAMINHO = "#89b4fa"
-ULTIMA = "#fab387"
-OK = "#a6e3a1"
-ERRO = "#f38ba8"
+# ==============================================================================
+#  3. TEMA E INTERFACE GRÁFICA
+# ==============================================================================
+BG = "#282828"          # Fundo principal (Cinza grafite quente)
+PAINEL = "#32302f"      # Fundo secundário dos painéis
+BORDA = "#504945"       # Bordas e separadores
+TXT = "#d5c4a1"         # Texto principal (Bege/Areia, evita o branco)
+TXT2 = "#a89984"        # Texto secundário (Cinza quente)
+NO = "#3c3836"          # Fundo dos estados não visitados
+NO_VISIT = "#665c54"    # Estados já visitados
+ATUAL = "#fabd2f"       # Amarelo (Estado atual)
+LINHA = "#928374"       # Cor neutra das arestas 
+CAMINHO = "#fe8019"     # Laranja (Caminho percorrido)
+ULTIMA = "#fb4934"      # Vermelho (Última transição feita)
+OK = "#b8bb26"          # Verde (Sucesso / Estado Final)
+ERRO = "#cc241d"        # Vermelho escuro (Erro / Rejeição)
+
+TEXTO_ESCURO = "#282828" # Cor do texto sobre fundos claros (ex: amarelo)
 
 FONTE = "Segoe UI"
 MONO = "Consolas"
@@ -127,6 +196,7 @@ class App:
         self.palavra = ""
         self.passos = []
         self.estado = INICIAL
+        self.travou = False
 
         self._estilo()
         self._montar()
@@ -173,13 +243,14 @@ class App:
         self.cv.pack(fill="x", pady=(2, 10))
         self._desenhar_estrutura()
 
-        self._titulo(esq, "SENTENÇA (digite 0 e 1  •  espaço avalia  •  "
+        str_alfabeto = ", ".join(ALFABETO)
+        self._titulo(esq, f"SENTENÇA (digite [{str_alfabeto}]  •  espaço/enter avalia  •  "
                           "backspace desfaz  •  esc limpa)").pack(fill="x")
         caixa = tk.Frame(esq, bg=PAINEL, highlightthickness=2,
                          highlightbackground=CAMINHO)
         caixa.pack(fill="x", pady=(2, 6))
         self.fonte_palavra = tkfont.Font(family=MONO, size=26, weight="bold")
-        self.colunas = 30      # nº de símbolos por linha (recalculado ao redimensionar)
+        self.colunas = 30
         self.lbl_palavra = tk.Label(caixa, text="", bg=PAINEL, fg=TXT,
                                     font=self.fonte_palavra, anchor="nw",
                                     justify="left", width=1, padx=12, pady=8)
@@ -200,7 +271,6 @@ class App:
                   activebackground=NO_VISIT, activeforeground=TXT,
                   relief="flat", font=(FONTE, 10), padx=10,
                   command=self.limpar).pack(side="right")
-
 
         # ----- coluna direita -----
         self._titulo(dir_, "LINGUAGEM, AUTÔMATO E GRAMÁTICA REGULAR").pack(fill="x")
@@ -238,6 +308,7 @@ class App:
         self.tv.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
         self.tv.tag_configure("final", foreground=OK)
+        self.tv.tag_configure("erro", foreground=ERRO)
         self.tv.tag_configure("inicio", foreground=TXT2)
 
     def _montar_tabela(self, pai):
@@ -248,7 +319,7 @@ class App:
         self.cel_eps = {}
 
         def celula(r, c, texto, fonte=(MONO, 11)):
-            lb = tk.Label(quadro, text=texto, bg=PAINEL, fg=TXT, width=9,
+            lb = tk.Label(quadro, text=texto, bg=PAINEL, fg=TXT, width=8,
                           font=fonte, pady=3)
             lb.grid(row=r, column=c, padx=1, pady=1, sticky="nsew")
             return lb
@@ -257,13 +328,15 @@ class App:
         for j, a in enumerate(ALFABETO, 1):
             celula(0, j, a, (MONO, 11, "bold")).config(fg=TXT2)
         celula(0, len(ALFABETO) + 1, "ε", (MONO, 11, "bold")).config(fg=OK)
+
         for i, e in enumerate(ESTADOS, 1):
             marca = "→" if e == INICIAL else " "
             self.cel_estado[e] = celula(i, 0, f"{marca} {e}")
             if e in FINAIS:
                 self.cel_estado[e].config(fg=OK)
             for j, a in enumerate(ALFABETO, 1):
-                self.cel[(e, a)] = celula(i, j, DELTA[(e, a)])
+                destino = DELTA.get((e, a), "—")
+                self.cel[(e, a)] = celula(i, j, destino)
             self.cel_eps[e] = celula(i, len(ALFABETO) + 1,
                                      "ε" if e in FINAIS else "")
             self.cel_eps[e].config(fg=OK)
@@ -271,15 +344,15 @@ class App:
     # ------------------------------------------------------------ desenho
     def _ponto_aresta(self, p, q, off):
         (x1, y1), (x2, y2) = p, q
-        d = math.hypot(x2 - x1, y2 - y1)
+        d = max(1.0, math.hypot(x2 - x1, y2 - y1))
         ux, uy = (x2 - x1) / d, (y2 - y1) / d
         nx, ny = -uy, ux
-        t = math.sqrt(R * R - off * off)
+        t = math.sqrt(max(0.0, RAIO_NO * RAIO_NO - off * off))
         s = (x1 + nx * off + ux * t, y1 + ny * off + uy * t)
         e = (x2 + nx * off - ux * t, y2 + ny * off - uy * t)
         m = ((s[0] + e[0]) / 2 + nx * 15 * (1 if off else 0),
              (s[1] + e[1]) / 2 + ny * 15 * (1 if off else 0))
-        if not off:  # arestas sem par: rótulo deslocado para o lado
+        if not off:
             m = ((s[0] + e[0]) / 2 + nx * -14, (s[1] + e[1]) / 2 + ny * -14)
         return s, e, m
 
@@ -288,59 +361,68 @@ class App:
         self.arestas = {}
         self.nos = {}
 
-        # seta de início
+        # Seta de início
         x, y = POS[INICIAL]
-        c.create_line(x - R - 60, y, x - R, y, arrow=tk.LAST, fill=LINHA, width=2)
-        c.create_text(x - R - 38, y - 16, text="início", fill=TXT2,
+        c.create_line(x - RAIO_NO - 60, y, x - RAIO_NO, y, arrow=tk.LAST, fill=LINHA, width=2)
+        c.create_text(x - RAIO_NO - 38, y - 16, text="início", fill=TXT2,
                       font=(FONTE, 10, "italic"))
 
-        # arestas
+        # Agrupa transições que têm a mesma origem e o mesmo destino
+        agrupadas = {}
         for (src, simb), dst in DELTA.items():
+            agrupadas.setdefault((src, dst), []).append(simb)
+
+        for (src, dst), simbolos in agrupadas.items():
+            rotulo = ", ".join(simbolos)
             if src == dst:
                 x, y = POS[src]
                 sg = -1 if src in LOOP_PARA_CIMA else 1
-                pts = [x - 14, y + sg * (R - 2), x - 28, y + sg * (R + 36),
-                       x + 28, y + sg * (R + 36), x + 14, y + sg * (R - 2)]
+                pts = [x - 14, y + sg * (RAIO_NO - 2), x - 28, y + sg * (RAIO_NO + 36),
+                       x + 28, y + sg * (RAIO_NO + 36), x + 14, y + sg * (RAIO_NO - 2)]
                 ln = c.create_line(*pts, smooth=True, arrow=tk.LAST,
                                    fill=LINHA, width=2)
-                lb = c.create_text(x, y + sg * (R + 50), text=simb,
+                lb = c.create_text(x, y + sg * (RAIO_NO + 50), text=rotulo,
                                    fill=TXT, font=(MONO, 13, "bold"))
             else:
-                par = (dst, [a for a in ALFABETO if DELTA[(dst, a)] == src])
-                tem_volta = bool(par[1])
+                tem_volta = (dst, src) in agrupadas
                 off = 14 if tem_volta else 0
                 s, e, m = self._ponto_aresta(POS[src], POS[dst], off)
                 ln = c.create_line(*s, *e, arrow=tk.LAST, fill=LINHA, width=2)
-                lb = c.create_text(*m, text=simb, fill=TXT,
+                lb = c.create_text(*m, text=rotulo, fill=TXT,
                                    font=(MONO, 13, "bold"))
-            self.arestas[(src, simb)] = (ln, lb)
 
-        # estados
+            for simb in simbolos:
+                self.arestas[(src, simb)] = (ln, lb)
+
+        # Nós (Estados)
         for e in ESTADOS:
             x, y = POS[e]
-            oval = c.create_oval(x - R, y - R, x + R, y + R, fill=NO,
-                                 outline=CAMINHO, width=3)
+            oval = c.create_oval(x - RAIO_NO, y - RAIO_NO, x + RAIO_NO, y + RAIO_NO,
+                                 fill=NO, outline=CAMINHO, width=3)
             inner = None
             if e in FINAIS:
-                inner = c.create_oval(x - R + 6, y - R + 6, x + R - 6, y + R - 6,
+                inner = c.create_oval(x - RAIO_NO + 6, y - RAIO_NO + 6,
+                                      x + RAIO_NO - 6, y + RAIO_NO - 6,
                                       fill="", outline=OK, width=2)
             t = c.create_text(x, y, text=e, fill=TXT, font=(FONTE, 13, "bold"))
             self.nos[e] = (oval, inner, t)
 
-        # legenda
+        # Legenda atualizada sem as cores azul
         c.create_text(14, 408, anchor="w", fill=TXT2, font=(FONTE, 9),
-                      text="amarelo = estado atual   •   azul = caminho percorrido"
-                           "   •   laranja = última transição   •   círculo duplo = final")
+                      text="amarelo = estado atual   •   laranja = caminho percorrido"
+                           "   •   vermelho = última transição   •   círculo duplo = final")
 
     def _atualizar_diagrama(self):
         c = self.cv
-        caminho = {(d, s) for (_, s, d, _) in self.passos}
-        ultima = (self.passos[-1][2], self.passos[-1][1]) if self.passos else None
-        visitados = {p[3] for p in self.passos} | {INICIAL}
+        caminho = {(d, s) for (_, s, d, para) in self.passos if para != "—"}
+        ultima = None
+        if self.passos and self.passos[-1][3] != "—":
+            ultima = (self.passos[-1][2], self.passos[-1][1])
+        visitados = {p[3] for p in self.passos if p[3] != "—"} | {INICIAL}
 
         for e, (oval, inner, t) in self.nos.items():
             if e == self.estado:
-                fill, cor_t = ATUAL, "#1e1e2e"
+                fill, cor_t = ATUAL, TEXTO_ESCURO
             elif e in visitados and self.passos:
                 fill, cor_t = NO_VISIT, TXT
             else:
@@ -350,28 +432,31 @@ class App:
                          width=4 if e == self.estado else 3)
             c.itemconfig(t, fill=cor_t)
 
+        for (ln, lb) in set(self.arestas.values()):
+            c.itemconfig(ln, fill=LINHA, width=2)
+            c.itemconfig(lb, fill=TXT)
+
         for k, (ln, lb) in self.arestas.items():
-            if k == ultima:
-                c.itemconfig(ln, fill=ULTIMA, width=5)
-                c.itemconfig(lb, fill=ULTIMA)
-            elif k in caminho:
+            if k in caminho:
                 c.itemconfig(ln, fill=CAMINHO, width=3)
                 c.itemconfig(lb, fill=CAMINHO)
-            else:
-                c.itemconfig(ln, fill=LINHA, width=2)
-                c.itemconfig(lb, fill=TXT)
+
+        if ultima and ultima in self.arestas:
+            ln, lb = self.arestas[ultima]
+            c.itemconfig(ln, fill=ULTIMA, width=5)
+            c.itemconfig(lb, fill=TEXTO_ESCURO)
 
     def _atualizar_tabela(self):
         ultima = (self.passos[-1][2], self.passos[-1][1]) if self.passos else None
         for e, lb in self.cel_estado.items():
             lb.config(bg=ATUAL if e == self.estado else PAINEL,
-                      fg="#1e1e2e" if e == self.estado
+                      fg=TEXTO_ESCURO if e == self.estado
                       else (OK if e in FINAIS else TXT))
         for e, lb in self.cel_eps.items():
             lb.config(bg=NO_VISIT if e == self.estado else PAINEL)
         for (e, a), lb in self.cel.items():
             if (e, a) == ultima:
-                lb.config(bg=ULTIMA, fg="#1e1e2e")
+                lb.config(bg=ULTIMA, fg=TEXTO_ESCURO)
             elif e == self.estado:
                 lb.config(bg=NO_VISIT, fg=TXT)
             else:
@@ -381,29 +466,32 @@ class App:
         self.tv.delete(*self.tv.get_children())
         self.tv.insert("", "end", tags=("inicio",),
                        values=("—", "", f"estado inicial = {INICIAL}",
-                               SIGNIFICADO[INICIAL]))
+                               obter_significado(INICIAL)))
         for n, s, de, para in self.passos:
-            tag = ("final",) if para in FINAIS else ()
-            self.tv.insert("", "end", tags=tag,
-                           values=(n, s, f"δ({de}, {s}) = {para}",
-                                   SIGNIFICADO[para]
-                                   + ("   ✔ final" if para in FINAIS else "")))
+            if para == "—":
+                self.tv.insert("", "end", tags=("erro",),
+                               values=(n, s, f"δ({de}, {s}) = ∅",
+                                       "Transição indefinida (Travou ✘)"))
+            else:
+                tag = ("final",) if para in FINAIS else ()
+                sig = obter_significado(para) + ("   ✔ final" if para in FINAIS else "")
+                self.tv.insert("", "end", tags=tag,
+                               values=(n, s, f"δ({de}, {s}) = {para}", sig))
         filhos = self.tv.get_children()
         if filhos:
             self.tv.see(filhos[-1])
 
     # ------------------------------------------------------------ campo de entrada
     def _ao_redimensionar(self, ev):
-        """Recalcula quantos símbolos cabem por linha na largura atual."""
-        largura_char = max(1, self.fonte_palavra.measure("0"))
-        cols = (ev.width - 24 - 4) // largura_char - 1   # -1: espaço para o cursor
+        sample = ALFABETO[0] if ALFABETO else "0"
+        largura_char = max(1, self.fonte_palavra.measure(sample))
+        cols = (ev.width - 24 - 4) // largura_char - 1
         cols = max(1, cols)
         if cols != self.colunas:
             self.colunas = cols
             self._render_palavra()
 
     def _render_palavra(self):
-        """Mostra a sentença quebrando em várias linhas (cresce para baixo)."""
         texto = self.palavra + "▌"
         n = self.colunas
         linhas = [texto[i:i + n] for i in range(0, len(texto), n)]
@@ -411,15 +499,27 @@ class App:
 
     # ------------------------------------------------------------ estado
     def recomputar(self):
-        """Refaz a simulação a partir da sentença atual e atualiza tudo."""
-        self.passos, self.estado = simular(self.palavra)
+        self.passos, self.estado, self.travou = simular(self.palavra)
         self._render_palavra()
-        marca = "FINAL ✔ (aceitaria se encerrasse agora)" if aceita(self.estado) \
-            else "não final ✘ (rejeitaria se encerrasse agora)"
+        ok = aceita(self.palavra, self.estado, self.travou)
+
+        if not self.palavra:
+            marca = "aguardando digitação (sentença vazia ε não pertence a L)"
+            cor_info = TXT
+        elif self.travou:
+            marca = "TRAVOU ✘ (transição indefinida)"
+            cor_info = ERRO
+        elif ok:
+            marca = "FINAL ✔ (aceitaria se encerrasse agora)"
+            cor_info = OK
+        else:
+            marca = "não final ✘ (rejeitaria se encerrasse agora)"
+            cor_info = TXT
+
         self.lbl_info.config(
-            text=f"Estado atual: {self.estado}  —  {SIGNIFICADO[self.estado]}\n"
+            text=f"Estado atual: {self.estado}  —  {obter_significado(self.estado)}\n"
                  f"Situação: {marca}",
-            fg=OK if aceita(self.estado) else TXT)
+            fg=cor_info)
         self._atualizar_diagrama()
         self._atualizar_tabela()
         self._atualizar_passos()
@@ -445,26 +545,25 @@ class App:
     def avaliar(self):
         if not self.palavra:
             return
-        ok = aceita(self.estado)
+        ok = aceita(self.palavra, self.estado, self.travou)
         txt = "RECONHECIDA" if ok else "REJEITADA"
         cor = OK if ok else ERRO
         self.lbl_veredito.config(
             text=f"“{self.palavra}”  →  {txt}   (parou em {self.estado})", fg=cor)
-        # reinicia o autômato para a próxima sentença
         self.palavra = ""
         self.recomputar()
 
     def on_tecla(self, ev):
         k, c = ev.keysym, ev.char
-        if c in ("0", "1"):
+        if c in ALFABETO:
             self.digitar(c)
-        elif k == "BackSpace":
+        elif k == TECLA_APAGAR:
             self.apagar()
-        elif k in ("space", "Return", "KP_Enter"):
+        elif k in TECLAS_AVALIAR:
             self.avaliar()
-        elif k == "Escape":
+        elif k == TECLA_LIMPAR:
             self.limpar()
-        return "break"           # qualquer outro símbolo é ignorado
+        return "break"
 
 
 if __name__ == "__main__":
