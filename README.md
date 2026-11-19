@@ -2,7 +2,7 @@
 
 Trabalho Discente Efetivo de Linguagens Formais, Ciência da Computação, URI Erechim.
 
-Programa em Python que reconhece uma linguagem regular usando um autômato finito determinístico (AFD). A cada símbolo digitado, o autômato muda de estado e a interface mostra a transição realizada. Ao teclar espaço, a sentença é indicada como reconhecida ou rejeitada.
+Programa em Python que reconhece uma linguagem regular usando um autômato finito determinístico (AFD). A cada símbolo digitado, o autômato muda de estado e a interface mostra a transição realizada. Ao teclar espaço ou enter, a sentença é indicada como reconhecida ou rejeitada.
 
 **Autores:** Nome do Componente 1 e Nome do Componente 2
 
@@ -17,34 +17,34 @@ Alfabeto: `{0, 1}`. A cadeia vazia não pertence à linguagem.
 
 ### Autômato
 
-AFD `M = (K, Σ, δ, q0, F)` com `K = {A, B, C, D, E}`, `q0 = A` e `F = {C, E}`.
+AFD `M = (K, Σ, δ, q0, F)` com `K = {S, A, B, C, D}`, `q0 = S` e `F = {B, D}`.
 
 | Estado | Significado |
 |---|---|
-| A | nada lido |
-| B | começou com 0, número de 0's ímpar |
-| C | começou com 0, número de 0's par (final) |
-| D | começou com 1, número de 0's par |
-| E | começou com 1, número de 0's ímpar (final) |
+| S | nada lido ainda |
+| A | começou com 0, número de 0's ímpar |
+| B | começou com 0, número de 0's par (final) |
+| C | começou com 1, número de 0's par |
+| D | começou com 1, número de 0's ímpar (final) |
 
 | δ | 0 | 1 | ε |
 |---|---|---|---|
-| → A | B | D | |
-| B | C | B | |
-| C | B | C | ε |
-| D | E | D | |
-| E | D | E | ε |
+| → S | A | C | |
+| A | B | A | |
+| B | A | B | ε |
+| C | D | C | |
+| D | C | D | ε |
 
 ### Gramática regular equivalente
 
 Os estados finais são identificados pela produção `ε`.
 
 ```
-A ::= 0B | 1D
-B ::= 0C | 1B
-C ::= 0B | 1C | ε
-D ::= 0E | 1D
-E ::= 0D | 1E | ε
+S ::= 0A | 1C
+A ::= 0B | 1A
+B ::= 0A | 1B | ε
+C ::= 0D | 1C
+D ::= 0C | 1D | ε
 ```
 
 ## Requisitos
@@ -69,27 +69,28 @@ python3 analisador_lexico.py
 | Tecla | Ação |
 |---|---|
 | `0` ou `1` | lê o símbolo e muda o estado do autômato |
-| Espaço | encerra a sentença e mostra RECONHECIDA ou REJEITADA |
+| Espaço ou Enter | encerra a sentença e mostra RECONHECIDA ou REJEITADA |
 | Backspace | desfaz o último símbolo |
 | Esc | limpa a sentença |
 
 Qualquer outro símbolo é ignorado. Ao encerrar uma sentença, o autômato volta ao estado inicial.
 
-A interface exibe o diagrama de transição (com o estado atual e o caminho percorrido destacados), a tabela de transições, a lista de passos do reconhecimento e a gramática da linguagem.
+A interface exibe o diagrama de transição (com o estado atual, o caminho percorrido e a última transição destacados), a tabela de transições, a lista de passos do reconhecimento e a gramática da linguagem.
 
 ## Estrutura do código
 
 O arquivo `analisador_lexico.py` é dividido em três partes:
 
-1. **Definição do autômato:** `ESTADOS`, `INICIAL`, `FINAIS`, `DELTA`, `SIGNIFICADO` e `POS`.
-2. **Lógica:** `simular()` executa o AFD consultando a tabela `DELTA`, `aceita()` verifica se o estado é final e `gerar_gramatica()` monta a gramática a partir do autômato.
-3. **Interface:** classe `App`, em Tkinter.
+1. **Configuração rápida (Definição do autômato):** `TEXTO_LINGUAGEM`, `ALFABETO`, `ESTADOS`, `INICIAL`, `FINAIS`, `TABELA_TRANSICAO`, `SIGNIFICADO`, `POSICOES_FIXAS`, `LOOP_PARA_CIMA` e teclas de controle.
+2. **Pré-processamento e motor do autômato:** `construir_delta()` monta o dicionário `DELTA` a partir de `TABELA_TRANSICAO`, `calcular_posicoes()` define as coordenadas `POS` no grafo, `simular()` executa o AFD passo a passo, `aceita()` verifica se a sentença foi aceita e `gerar_gramatica()` gera a gramática regular equivalente.
+3. **Interface gráfica:** tema de cores e classe `App`, em Tkinter.
 
 ## Alterando a linguagem
 
-Basta editar a parte 1. Para que o programa funcione, é preciso respeitar:
+Basta editar a parte 1 do código:
 
-- todo estado em `ESTADOS` tem uma transição em `DELTA` para cada símbolo do alfabeto (tabela total);
-- todo estado tem entrada em `SIGNIFICADO` e em `POS`;
-- `INICIAL` e `FINAIS` contêm apenas estados que existem em `ESTADOS`;
-- estados com laço desenhado na fileira de cima do diagrama devem estar em `LOOP_PARA_CIMA`.
+- `INICIAL` e `FINAIS` devem conter apenas estados declarados em `ESTADOS`;
+- em `TABELA_TRANSICAO`, a lista de destinos de cada estado deve seguir a mesma ordem dos símbolos em `ALFABETO`;
+- **AFDs incompletos são suportados:** para omitir uma transição, use `None`, `""` ou `"-"` na tabela (o autômato indicará travamento/rejeição ao ler o símbolo);
+- `SIGNIFICADO` e `POSICOES_FIXAS` são **opcionais**: estados novos sem entrada recebem uma descrição padrão e são posicionados automaticamente no diagrama;
+- estados cujo auto-laço deve ser desenhado para cima devem ser listados em `LOOP_PARA_CIMA`.

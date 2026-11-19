@@ -24,7 +24,7 @@ import tkinter.font as tkfont
 from tkinter import ttk
 
 # ==============================================================================
-#  1. ÁREA DE CONFIGURAÇÃO RÁPIDA
+#  1. ÁREA DE CONFIGURAÇÃO RÁPIDA (DEFINIÇÃO DO AUTÔMATO)
 # ==============================================================================
 
 # Descrição que aparece no painel superior direito
@@ -48,7 +48,6 @@ FINAIS = {"B", "D"}
 # Tabela de Transição δ:
 # Para cada estado, informe a lista de estados de destino seguindo a MESMA ORDEM do ALFABETO.
 # Dica: Se não houver transição para um símbolo (AFD incompleto), use None ou "-".
-# Exemplo abaixo para ALFABETO = ["0", "1"]: [destino_com_0, destino_com_1]
 TABELA_TRANSICAO = {
     #        "0"   "1"
     "S": [   "A",  "C" ],
@@ -86,6 +85,7 @@ RAIO_NO = 30                  # Raio do círculo de cada estado
 #  2. PRÉ-PROCESSAMENTO E MOTOR DO AUTÔMATO (LÓGICA PURA)
 # ==============================================================================
 
+# [MOTOR] Converte TABELA_TRANSICAO no dicionário DELTA: (estado, simbolo) -> destino
 def construir_delta():
     """Converte a TABELA_TRANSICAO amigável no dicionário DELTA (estado, simbolo) -> destino."""
     delta = {}
@@ -105,6 +105,7 @@ def obter_significado(estado):
     return SIGNIFICADO.get(estado, f"Estado {estado}")
 
 
+# [MOTOR] Calcula coordenadas (x, y) dos nós no grafo
 def calcular_posicoes():
     """Garante que todo estado tenha uma posição (x, y) na tela, mesmo se adicionado ao vivo."""
     pos = {}
@@ -123,6 +124,7 @@ def calcular_posicoes():
 POS = calcular_posicoes()
 
 
+# [MOTOR] Simulação passo a passo da palavra no AFD
 def simular(palavra):
     estado = INICIAL
     passos = []
@@ -141,12 +143,14 @@ def simular(palavra):
     return passos, estado, travou
 
 
+# [MOTOR] Verifica se a sentença foi aceita (não vazia, não travou e parou em estado final)
 def aceita(palavra, estado, travou):
     if not palavra or travou:
         return False
     return estado in FINAIS
 
 
+# [MOTOR] Gera a Gramática Regular equivalente a partir de DELTA e FINAIS
 def gerar_gramatica():
     linhas = []
     for e in ESTADOS:
@@ -163,7 +167,7 @@ def gerar_gramatica():
 
 
 # ==============================================================================
-#  3. TEMA E INTERFACE GRÁFICA
+#  3. TEMA, CORES E INTERFACE GRÁFICA (TKINTER)
 # ==============================================================================
 BG = "#282828"          # Fundo principal (Cinza grafite quente)
 PAINEL = "#32302f"      # Fundo secundário dos painéis
@@ -186,6 +190,7 @@ MONO = "Consolas"
 
 
 class App:
+    # [UI] Inicialização da janela principal e vinculação do teclado
     def __init__(self, raiz):
         self.raiz = raiz
         raiz.title("Analisador Léxico — Autômato Finito Determinístico")
@@ -205,7 +210,7 @@ class App:
         raiz.bind("<Key>", self.on_tecla)
         raiz.focus_set()
 
-    # ------------------------------------------------------------ estilo
+    # [UI] Estilo da tabela de passos (Treeview) e barra de rolagem
     def _estilo(self):
         s = ttk.Style()
         try:
@@ -225,8 +230,11 @@ class App:
         return tk.Label(pai, text=texto, bg=BG, fg=TXT2, anchor="w",
                         font=(FONTE, 10, "bold"))
 
-    # ------------------------------------------------------------ montagem
+    # ==========================================================================
+    #  MONTAGEM DOS PAINÉIS DA INTERFACE
+    # ==========================================================================
     def _montar(self):
+        # [UI] Divisão da tela em 2 colunas (esquerda: grafo/entrada, direita: teoria/tabelas)
         self.raiz.columnconfigure(0, weight=3)
         self.raiz.columnconfigure(1, weight=2)
         self.raiz.rowconfigure(0, weight=1)
@@ -236,13 +244,16 @@ class App:
         dir_ = tk.Frame(self.raiz, bg=BG)
         dir_.grid(row=0, column=1, sticky="nsew", padx=(7, 14), pady=14)
 
-        # ----- coluna esquerda -----
+        # ----- COLUNA ESQUERDA -----
+
+        # [UI] DIAGRAMA DO AUTÔMATO (Canvas onde o grafo é desenhado)
         self._titulo(esq, "DIAGRAMA DE TRANSIÇÃO").pack(fill="x")
         self.cv = tk.Canvas(esq, width=640, height=430, bg=PAINEL,
                             highlightthickness=1, highlightbackground=BORDA)
         self.cv.pack(fill="x", pady=(2, 10))
         self._desenhar_estrutura()
 
+        # [UI] CAMPO DE ENTRADA DA SENTENÇA
         str_alfabeto = ", ".join(ALFABETO)
         self._titulo(esq, f"SENTENÇA (digite [{str_alfabeto}]  •  espaço/enter avalia  •  "
                           "backspace desfaz  •  esc limpa)").pack(fill="x")
@@ -257,6 +268,7 @@ class App:
         self.lbl_palavra.pack(fill="x")
         caixa.bind("<Configure>", self._ao_redimensionar)
 
+        # [UI] STATUS ATUAL E VEREDITO (RECONHECIDA / REJEITADA)
         self.lbl_info = tk.Label(esq, text="", bg=BG, fg=TXT, anchor="w",
                                  justify="left", font=(FONTE, 12))
         self.lbl_info.pack(fill="x", pady=(0, 4))
@@ -265,6 +277,7 @@ class App:
                                      font=(FONTE, 18, "bold"))
         self.lbl_veredito.pack(fill="x", pady=(0, 6))
 
+        # [UI] BOTÃO LIMPAR
         barra = tk.Frame(esq, bg=BG)
         barra.pack(fill="x", pady=(0, 6))
         tk.Button(barra, text="Limpar", takefocus=0, bg=BORDA, fg=TXT,
@@ -272,7 +285,9 @@ class App:
                   relief="flat", font=(FONTE, 10), padx=10,
                   command=self.limpar).pack(side="right")
 
-        # ----- coluna direita -----
+        # ----- COLUNA DIREITA -----
+
+        # [UI] PAINEL DE LINGUAGEM, DEFINIÇÃO FORMAL E GRAMÁTICA REGULAR
         self._titulo(dir_, "LINGUAGEM, AUTÔMATO E GRAMÁTICA REGULAR").pack(fill="x")
         txt = tk.Text(dir_, bg=PAINEL, fg=TXT, bd=0, height=15, wrap="none",
                       highlightthickness=1, highlightbackground=BORDA,
@@ -289,9 +304,11 @@ class App:
         txt.insert("1.0", formal)
         txt.config(state="disabled")
 
+        # [UI] TABELA DE TRANSIÇÕES (δ)
         self._titulo(dir_, "TABELA DE TRANSIÇÕES  (δ)").pack(fill="x")
         self._montar_tabela(dir_)
 
+        # [UI] LOG DE PASSOS DO RECONHECIMENTO (Treeview)
         self._titulo(dir_, "PASSOS DO RECONHECIMENTO").pack(fill="x", pady=(10, 0))
         quadro = tk.Frame(dir_, bg=BG)
         quadro.pack(fill="both", expand=True, pady=(2, 0))
@@ -311,6 +328,7 @@ class App:
         self.tv.tag_configure("erro", foreground=ERRO)
         self.tv.tag_configure("inicio", foreground=TXT2)
 
+    # [UI] MONTAGEM DA GRADE DA TABELA DE TRANSIÇÕES (δ)
     def _montar_tabela(self, pai):
         quadro = tk.Frame(pai, bg=BORDA)
         quadro.pack(anchor="w", pady=(2, 0))
@@ -341,7 +359,11 @@ class App:
                                      "ε" if e in FINAIS else "")
             self.cel_eps[e].config(fg=OK)
 
-    # ------------------------------------------------------------ desenho
+    # ==========================================================================
+    #  DESENHO E ATUALIZAÇÃO DO DIAGRAMA DO AUTÔMATO
+    # ==========================================================================
+
+    # [DESENHO] Calcula pontos de início, fim e rótulo das setas entre dois estados
     def _ponto_aresta(self, p, q, off):
         (x1, y1), (x2, y2) = p, q
         d = max(1.0, math.hypot(x2 - x1, y2 - y1))
@@ -356,6 +378,7 @@ class App:
             m = ((s[0] + e[0]) / 2 + nx * -14, (s[1] + e[1]) / 2 + ny * -14)
         return s, e, m
 
+    # [DESENHO] DIAGRAMA DO AUTÔMATO (seta inicial, arestas, auto-laços, nós e legenda)
     def _desenhar_estrutura(self):
         c = self.cv
         self.arestas = {}
@@ -372,6 +395,7 @@ class App:
         for (src, simb), dst in DELTA.items():
             agrupadas.setdefault((src, dst), []).append(simb)
 
+        # Desenha arestas e auto-laços
         for (src, dst), simbolos in agrupadas.items():
             rotulo = ", ".join(simbolos)
             if src == dst:
@@ -394,7 +418,7 @@ class App:
             for simb in simbolos:
                 self.arestas[(src, simb)] = (ln, lb)
 
-        # Nós (Estados)
+        # Desenha os nós (estados e círculo duplo para finais)
         for e in ESTADOS:
             x, y = POS[e]
             oval = c.create_oval(x - RAIO_NO, y - RAIO_NO, x + RAIO_NO, y + RAIO_NO,
@@ -407,11 +431,16 @@ class App:
             t = c.create_text(x, y, text=e, fill=TXT, font=(FONTE, 13, "bold"))
             self.nos[e] = (oval, inner, t)
 
-        # Legenda atualizada sem as cores azul
+        # Legenda de cores do diagrama
         c.create_text(14, 408, anchor="w", fill=TXT2, font=(FONTE, 9),
                       text="amarelo = estado atual   •   laranja = caminho percorrido"
                            "   •   vermelho = última transição   •   círculo duplo = final")
 
+    # ==========================================================================
+    #  ATUALIZAÇÃO VISUAL EM TEMPO REAL
+    # ==========================================================================
+
+    # [ATUALIZAÇÃO] Pinta estado atual, caminho percorrido e última transição no diagrama
     def _atualizar_diagrama(self):
         c = self.cv
         caminho = {(d, s) for (_, s, d, para) in self.passos if para != "—"}
@@ -446,6 +475,7 @@ class App:
             c.itemconfig(ln, fill=ULTIMA, width=5)
             c.itemconfig(lb, fill=TEXTO_ESCURO)
 
+    # [ATUALIZAÇÃO] Destaca linha do estado atual e célula da última transição na tabela δ
     def _atualizar_tabela(self):
         ultima = (self.passos[-1][2], self.passos[-1][1]) if self.passos else None
         for e, lb in self.cel_estado.items():
@@ -462,6 +492,7 @@ class App:
             else:
                 lb.config(bg=PAINEL, fg=TXT)
 
+    # [ATUALIZAÇÃO] Preenche o histórico na tabela de passos do reconhecimento
     def _atualizar_passos(self):
         self.tv.delete(*self.tv.get_children())
         self.tv.insert("", "end", tags=("inicio",),
@@ -481,7 +512,7 @@ class App:
         if filhos:
             self.tv.see(filhos[-1])
 
-    # ------------------------------------------------------------ campo de entrada
+    # [ATUALIZAÇÃO] Quebra de linha automática e exibição da sentença digitada
     def _ao_redimensionar(self, ev):
         sample = ALFABETO[0] if ALFABETO else "0"
         largura_char = max(1, self.fonte_palavra.measure(sample))
@@ -497,7 +528,11 @@ class App:
         linhas = [texto[i:i + n] for i in range(0, len(texto), n)]
         self.lbl_palavra.config(text="\n".join(linhas))
 
-    # ------------------------------------------------------------ estado
+    # ==========================================================================
+    #  CONTROLE DE ESTADO E EVENTOS DE TECLADO
+    # ==========================================================================
+
+    # [CONTROLE] Reexecuta a simulação e atualiza todos os painéis da tela
     def recomputar(self):
         self.passos, self.estado, self.travou = simular(self.palavra)
         self._render_palavra()
@@ -524,7 +559,7 @@ class App:
         self._atualizar_tabela()
         self._atualizar_passos()
 
-    # ------------------------------------------------------------ ações
+    # [EVENTOS] Ações de entrada: digitar, apagar, limpar e avaliar sentença
     def digitar(self, c):
         self.lbl_veredito.config(text="")
         self.palavra += c
@@ -553,6 +588,7 @@ class App:
         self.palavra = ""
         self.recomputar()
 
+    # [EVENTOS] Captura global de teclas
     def on_tecla(self, ev):
         k, c = ev.keysym, ev.char
         if c in ALFABETO:
